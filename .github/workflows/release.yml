@@ -15,31 +15,31 @@ jobs:
             target: windows
             build-cmd: flutter build windows --release
             artifact-path: build/windows/x64/runner/Release
-            archive-cmd: 7z a ../../../../tako-windows.zip ./*
+            archive-cmd: 7z a "$env:GITHUB_WORKSPACE\tako-windows.zip" ./*
             archive-file: tako-windows.zip
           - os: macos-latest
             target: macos
             build-cmd: flutter build macos --release
             artifact-path: build/macos/Build/Products/Release
-            archive-cmd: zip -r ../../../../../tako-macos.zip .
+            archive-cmd: zip -r "$GITHUB_WORKSPACE/tako-macos.zip" .
             archive-file: tako-macos.zip
           - os: ubuntu-latest
             target: linux
             build-cmd: flutter build linux --release
             artifact-path: build/linux/x64/release/bundle
-            archive-cmd: zip -r ../../../../../tako-linux.zip .
+            archive-cmd: zip -r "$GITHUB_WORKSPACE/tako-linux.zip" .
             archive-file: tako-linux.zip
           - os: ubuntu-latest
             target: web
             build-cmd: flutter build web --release
             artifact-path: build/web
-            archive-cmd: zip -r ../../../tako-web.zip .
+            archive-cmd: zip -r "$GITHUB_WORKSPACE/tako-web.zip" .
             archive-file: tako-web.zip
           - os: ubuntu-latest
             target: android
             build-cmd: flutter build apk --release
             artifact-path: build/app/outputs/flutter-apk
-            archive-cmd: cp app-release.apk ../../../../../tako-android.apk
+            archive-cmd: cp app-release.apk "$GITHUB_WORKSPACE/tako-android.apk"
             archive-file: tako-android.apk
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30

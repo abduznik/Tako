@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: dart analyze lib bin test
+      - run: flutter test
+
+  build:
+    needs: analyze
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+            build-cmd: flutter build windows --release
+            artifact-path: build/windows/x64/runner/Release
+          - os: macos-latest
+            target: macos
+            build-cmd: flutter build macos --release
+            artifact-path: build/macos/Build/Products/Release
+          - os: ubuntu-latest
+            target: linux
+            build-cmd: flutter build linux --release
+            artifact-path: build/linux/x64/release/bundle
+          - os: ubuntu-latest
+            target: web
+            build-cmd: flutter build web --release
+            artifact-path: build/web
+          - os: ubuntu-latest
+            target: android
+            build-cmd: flutter build apk --release
+            artifact-path: build/app/outputs/flutter-apk
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev
+      - if: matrix.target == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: flutter pub get
+      - run: ${{ matrix.build-cmd }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tako-${{ matrix.target }}
+          path: ${{ matrix.artifact-path }}
+          retention-days: 14

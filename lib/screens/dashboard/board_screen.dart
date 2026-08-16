@@ -31,10 +31,68 @@ class _BoardScreenState extends State<BoardScreen> {
   String? _loadError;
   String? _recentlyMovedTaskId;
 
+  final ScrollController _boardScrollController = ScrollController();
+  bool _isDraggingItem = false;
+  double? _pointerX;
+  bool _autoScrolling = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _boardScrollController.dispose();
+    super.dispose();
+  }
+
+  // The drag_and_drop_lists package's own edge-auto-scroll is hardcoded to
+  // a slow crawl (a ~20px trigger zone moving at most ~6px per 30ms tick,
+  // via private, non-configurable constants) — too slow to reach a column
+  // a couple tabs over while holding a card, especially on a phone screen.
+  // This Listener-driven loop runs alongside it with a wider trigger zone
+  // and a speed we control, and simply wins each frame via jumpTo.
+  static const _autoScrollZone = 80.0;
+  static const _autoScrollMaxPxPerTick = 24.0; // ~3x the package's default
+  static const _autoScrollTick = Duration(milliseconds: 16);
+
+  void _onPointerMoveDuringDrag(PointerEvent event) {
+    _pointerX = event.position.dx;
+    if (_isDraggingItem) _runAutoScroll();
+  }
+
+  Future<void> _runAutoScroll() async {
+    if (_autoScrolling) return;
+    _autoScrolling = true;
+    try {
+      while (_isDraggingItem && mounted) {
+        final x = _pointerX;
+        final controller = _boardScrollController;
+        if (x == null || !controller.hasClients) {
+          await Future.delayed(_autoScrollTick);
+          continue;
+        }
+        final width = MediaQuery.sizeOf(context).width;
+        double delta = 0;
+        if (x < _autoScrollZone) {
+          final strength = (1 - (x / _autoScrollZone)).clamp(0.0, 1.0);
+          delta = -_autoScrollMaxPxPerTick * strength;
+        } else if (x > width - _autoScrollZone) {
+          final strength = (1 - ((width - x) / _autoScrollZone)).clamp(0.0, 1.0);
+          delta = _autoScrollMaxPxPerTick * strength;
+        }
+        if (delta != 0) {
+          final target = (controller.offset + delta)
+              .clamp(0.0, controller.position.maxScrollExtent);
+          controller.jumpTo(target);
+        }
+        await Future.delayed(_autoScrollTick);
+      }
+    } finally {
+      _autoScrolling = false;
+    }
   }
 
   Future<void> _load() async {
@@ -192,38 +250,46 @@ class _BoardScreenState extends State<BoardScreen> {
             (constraints.maxWidth - spacing * (columnCount - 1)) / columnCount;
         final columnWidth = evenWidth < minColumnWidth ? minColumnWidth : evenWidth;
 
-        return DragAndDropLists(
-          axis: Axis.horizontal,
-          listWidth: columnWidth,
-          listPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          listInnerDecoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          lastItemTargetHeight: 80,
-          itemDragOnLongPress: false,
-          // Visible "picked up" look for the card following the cursor —
-          // this Container wraps the TaskCard itself, so the outline must
-          // be a real border (a boxShadow gets hidden behind the card's
-          // own opaque background) — and a dimmed placeholder in the list
-          // where it would land.
-          itemDecorationWhileDragging: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: theme.colorScheme.primary, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
+        return Listener(
+          onPointerMove: _onPointerMoveDuringDrag,
+          child: DragAndDropLists(
+            axis: Axis.horizontal,
+            listWidth: columnWidth,
+            listPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            listInnerDecoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            lastItemTargetHeight: 80,
+            itemDragOnLongPress: false,
+            scrollController: _boardScrollController,
+            onItemDraggingChanged: (_, dragging) {
+              _isDraggingItem = dragging;
+              if (dragging) _runAutoScroll();
+            },
+            // Visible "picked up" look for the card following the cursor —
+            // this Container wraps the TaskCard itself, so the outline must
+            // be a real border (a boxShadow gets hidden behind the card's
+            // own opaque background) — and a dimmed placeholder in the list
+            // where it would land.
+            itemDecorationWhileDragging: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: theme.colorScheme.primary, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            itemGhostOpacity: 0.3,
+            onItemReorder: _onItemReorder,
+            onListReorder: (_, _) {}, // Column reordering isn't supported yet.
+            children: [
+              for (var i = 0; i < _columns.length; i++) _buildColumn(theme, i),
             ],
           ),
-          itemGhostOpacity: 0.3,
-          onItemReorder: _onItemReorder,
-          onListReorder: (_, _) {}, // Column reordering isn't supported yet.
-          children: [
-            for (var i = 0; i < _columns.length; i++) _buildColumn(theme, i),
-          ],
         );
       },
     );

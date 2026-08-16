@@ -10,11 +10,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:tako/api/jsonrpc_exception.dart';
-import 'package:tako/api/kanboard_client.dart';
 import 'package:tako/notifications/alert_store.dart';
 import 'package:tako/notifications/notification_event.dart';
 import 'package:tako/notifications/watchdog_service.dart';
+import 'package:tako/providers/kanboard_provider.dart';
+import 'package:tako/providers/provider_exceptions.dart';
 
 void section(String title) {
   print('');
@@ -29,10 +29,11 @@ Future<void> main(List<String> args) async {
     exit(64);
   }
 
-  final client = KanboardClient(
+  final provider = KanboardProvider(
     baseUrl: args[0],
     username: args[1],
     password: args[2],
+    profileName: 'Kanboard',
   );
 
   final completer = Completer<void>();
@@ -42,15 +43,15 @@ Future<void> main(List<String> args) async {
   try {
     section('Setup');
     final projectName = 'Tako Watchdog Test ${DateTime.now().toIso8601String()}';
-    final projectId = await client.createProject(projectName);
+    final projectId = await provider.createProject(projectName);
     print('Created project "$projectName" with id $projectId');
 
-    final columns = await client.getColumns(projectId);
+    final columns = await provider.getColumns(projectId);
     final firstColumnId = columns.isNotEmpty ? columns.first.id : null;
 
     // Due soon (< 5 min window) immediately, overdue ~40s from now.
     final dueDate = DateTime.now().add(const Duration(seconds: 40));
-    final taskId = await client.createTask(
+    final taskId = await provider.createTask(
       projectId: projectId,
       title: 'Watchdog Test Task',
       columnId: firstColumnId,
@@ -62,7 +63,7 @@ Future<void> main(List<String> args) async {
     section('Starting watchdog (polling every 5s for this test)');
     final alertStore = AlertStore('.tako/alert_history.json');
     final watchdog = WatchdogService(
-      client: client,
+      provider: provider,
       projectIds: [projectId],
       pollInterval: const Duration(seconds: 5),
       dueSoonWindow: const Duration(minutes: 5),
@@ -101,13 +102,16 @@ Future<void> main(List<String> args) async {
       stderr.writeln('Watchdog test scenario FAILED (missing expected events).');
       exit(1);
     }
-  } on KanboardApiException catch (e) {
+  } on ProviderAuthException catch (e) {
+    stderr.writeln('Kanboard auth error: $e');
+    exit(1);
+  } on ProviderConnectionException catch (e) {
+    stderr.writeln('Kanboard connection error: $e');
+    exit(1);
+  } on ProviderException catch (e) {
     stderr.writeln('Kanboard API error: $e');
     exit(1);
-  } on KanboardHttpException catch (e) {
-    stderr.writeln('HTTP/transport error: $e');
-    exit(1);
   } finally {
-    client.close();
+    provider.dispose();
   }
 }

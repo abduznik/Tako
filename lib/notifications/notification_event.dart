@@ -1,8 +1,8 @@
 enum NotificationEventType { overdue, dueSoon }
 
 class NotificationEvent {
-  final int taskId;
-  final int projectId;
+  final String taskId;
+  final String projectId;
   final String taskTitle;
   final String projectName;
   final DateTime dueDate;

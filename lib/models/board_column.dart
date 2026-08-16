@@ -1,8 +1,8 @@
 class BoardColumn {
-  final int id;
+  final String id;
   final String title;
   final int position;
-  final int projectId;
+  final String projectId;
   final int taskLimit;
 
   BoardColumn({
@@ -15,10 +15,10 @@ class BoardColumn {
 
   factory BoardColumn.fromJson(Map<String, dynamic> json) {
     return BoardColumn(
-      id: int.parse(json['id'].toString()),
+      id: json['id'].toString(),
       title: json['title']?.toString() ?? '',
       position: int.parse(json['position'].toString()),
-      projectId: int.parse(json['project_id'].toString()),
+      projectId: json['project_id'].toString(),
       taskLimit: int.tryParse(json['task_limit']?.toString() ?? '') ?? 0,
     );
   }

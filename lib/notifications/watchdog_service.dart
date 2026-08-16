@@ -1,24 +1,24 @@
 import 'dart:async';
 
-import '../api/jsonrpc_exception.dart';
-import '../api/kanboard_client.dart';
 import '../models/project.dart';
+import '../providers/provider_exceptions.dart';
+import '../providers/task_provider.dart';
 import 'alert_store.dart';
 import 'notification_event.dart';
 
-/// Polls Kanboard tasks for deadline-based events (overdue / due-soon) and
-/// emits [NotificationEvent]s, deduped so the same task+type+due-date only
-/// fires once.
+/// Polls tasks (via any [TaskProvider] — Kanboard or standalone local) for
+/// deadline-based events (overdue / due-soon) and emits [NotificationEvent]s,
+/// deduped so the same task+type+due-date only fires once.
 ///
 /// Scope is either an explicit list of project IDs, or `null` to watch all
-/// projects visible to the authenticated user (re-resolved every poll, so
-/// newly created/removed projects are picked up automatically).
+/// projects visible to the provider (re-resolved every poll, so newly
+/// created/removed projects are picked up automatically).
 ///
-/// Network/API failures during a poll are logged via [onError] and do not
-/// stop the watchdog — it simply retries on the next scheduled interval.
+/// Provider failures during a poll are logged via [onError] and do not stop
+/// the watchdog — it simply retries on the next scheduled interval.
 class WatchdogService {
-  final KanboardClient client;
-  final List<int>? projectIds;
+  final TaskProvider provider;
+  final List<String>? projectIds;
   final Duration pollInterval;
   final Duration dueSoonWindow;
   final void Function(NotificationEvent event) onEvent;
@@ -32,10 +32,10 @@ class WatchdogService {
   /// this across restarts when provided.
   final Set<String> _alertedThisSession = {};
 
-  final Map<int, String> _projectNames = {};
+  final Map<String, String> _projectNames = {};
 
   WatchdogService({
-    required this.client,
+    required this.provider,
     required this.onEvent,
     this.projectIds,
     this.onError = _defaultOnError,
@@ -72,7 +72,7 @@ class WatchdogService {
 
       for (final projectId in ids) {
         final projectName = await _resolveProjectName(projectId);
-        final tasks = await client.getTasksWithDueDate(projectId);
+        final tasks = await provider.getTasksWithDueDate(projectId);
 
         for (final task in tasks) {
           final due = task.dateDue;
@@ -102,9 +102,11 @@ class WatchdogService {
           ));
         }
       }
-    } on KanboardApiException catch (e) {
+    } on ProviderException catch (e) {
       onError(e);
-    } on KanboardHttpException catch (e) {
+    } on ProviderConnectionException catch (e) {
+      onError(e);
+    } on ProviderAuthException catch (e) {
       onError(e);
     } catch (e) {
       onError(e);
@@ -113,18 +115,18 @@ class WatchdogService {
     }
   }
 
-  Future<List<int>> _resolveAllProjectIds() async {
-    final projects = await client.getAllProjects();
+  Future<List<String>> _resolveAllProjectIds() async {
+    final projects = await provider.getProjects();
     for (final p in projects) {
       _projectNames[p.id] = p.name;
     }
     return projects.map((p) => p.id).toList();
   }
 
-  Future<String> _resolveProjectName(int projectId) async {
+  Future<String> _resolveProjectName(String projectId) async {
     final cached = _projectNames[projectId];
     if (cached != null) return cached;
-    final projects = await client.getAllProjects();
+    final projects = await provider.getProjects();
     for (final Project p in projects) {
       _projectNames[p.id] = p.name;
     }

@@ -1,5 +1,5 @@
 class Project {
-  final int id;
+  final String id;
   final String name;
   final bool isActive;
   final String description;
@@ -13,7 +13,7 @@ class Project {
 
   factory Project.fromJson(Map<String, dynamic> json) {
     return Project(
-      id: int.parse(json['id'].toString()),
+      id: json['id'].toString(),
       name: json['name']?.toString() ?? '',
       isActive: json['is_active']?.toString() == '1',
       description: json['description']?.toString() ?? '',
